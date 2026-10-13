@@ -34,6 +34,18 @@ static partial class ThemeSwitcher
 
     // 供托盘显示的当前状态
     internal static volatile bool currentLight = true;
+    internal static volatile string locationDisplay = "定位中…";   // 托盘菜单显示用
+    internal static DateTime nextSwitchTime = DateTime.MaxValue;   // 下次切换时刻
+    internal static bool nextSwitchLight;                          // 下次切换到的模式
+    internal static volatile int refreshEpoch;                     // +1 表示要求重新拉取日出日落/重算
+
+    // 运行时切换定位(托盘菜单调用); 直接生效, 后台线程会自动重算
+    internal static void ChangeLocation(string latlon, string display)
+    {
+        latlonCurrent = latlon;
+        locationDisplay = display;
+        refreshEpoch++;
+    }
 
     static string HttpGet(string url)
     {
@@ -52,37 +64,74 @@ static partial class ThemeSwitcher
         string latlon;
         double dummy;
         if (args.Length >= 2 && double.TryParse(args[0], out dummy) && double.TryParse(args[1], out dummy))
+        {
             latlon = args[0] + "," + args[1];
+            locationDisplay = latlon;
+        }
         else if (args.Length >= 1)
+        {
             latlon = Geocode(string.Join(" ", args));
+            locationDisplay = string.Join(" ", args) + " (" + latlon + ")";
+        }
         else
+        {
             latlon = DetectLocation();
+            locationDisplay = "IP 定位 (" + latlon + ")";
+        }
+        latlonCurrent = latlon;
 
         // 切换逻辑跑在后台线程
-        var worker = new Thread(() => RunLoop(latlon));
+        var worker = new Thread(() => RunLoop());
         worker.IsBackground = true;
         worker.Start();
 
         TrayRun(); // 托盘图标 + 消息循环(阻塞直到退出)
     }
 
-    static void RunLoop(string latlon)
+    static string latlonCurrent = "";
+
+    static void RunLoop()
     {
+        int epoch = refreshEpoch;
         while (true)
         {
             bool light;
-            DateTime next = NextEvent(DateTime.Now, latlon, out light);
+            DateTime next;
 
-            // 分片睡眠(最长 1 小时), 改系统时间后也能较快纠正
-            while (DateTime.Now < next)
+            // 计算下次切换时刻(失败时 30 分钟后重试)
+            try
             {
+                next = NextEvent(DateTime.Now, latlonCurrent, out light);
+            }
+            catch
+            {
+                nextSwitchTime = DateTime.Now.AddMinutes(30);
+                nextSwitchLight = currentLight;
+                Thread.Sleep(30000);
+                continue;
+            }
+            if (epoch != refreshEpoch) { epoch = refreshEpoch; continue; } // 定位/刷新已变更, 重算
+            nextSwitchTime = next;
+            nextSwitchLight = light;
+
+            // 等到切换时刻; 期间定位/刷新变更或时钟被改则提前跳出重算
+            while (true)
+            {
+                if (epoch != refreshEpoch) break;
                 double ms = (next - DateTime.Now).TotalMilliseconds;
-                if (ms > 3600000) ms = 3600000;
-                if (ms < 1) break;
+                if (ms <= 0) { ms = 0; }
+                else if (ms > 3600000) ms = 3600000; // 分片睡眠, 改系统时间后也能较快纠正
+                if (ms == 0)
+                {
+                    if (DateTime.Now >= next) break;
+                    continue;
+                }
                 Thread.Sleep((int)ms);
             }
+            if (epoch != refreshEpoch) { epoch = refreshEpoch; continue; }
 
-            SetTheme(light);
+            if (DateTime.Now >= next) SetTheme(light);
+            epoch = refreshEpoch;
         }
     }
 }
