@@ -2,10 +2,10 @@
 
 **6 KB 大小**的 Windows 深色/浅色模式自动切换工具：按**日出日落**时间自动在深色与浅色模式间切换。
 
-- 🪶 极小体积：exe 仅约 **8 KB**（依赖系统内置的 .NET Framework 4，Win10/Win11 无需安装任何东西）
+- 🪶 极小体积：exe 仅约 **10 KB**（依赖系统内置的 .NET Framework 4，Win10/Win11 无需安装任何东西）
 - 🌐 在线数据：[ip-api.com](https://ip-api.com) 按 IP 定位、[OpenStreetMap Nominatim](https://nominatim.openstreetmap.org) 地名解析、[sunrise-sunset.org](https://sunrise-sunset.org) 日出日落（均免费、无需注册/API Key）
 - 📍 支持三种定位方式：数字坐标 / 地名（如 `ThemeSwitcher.exe 上海`）/ IP 自动定位
-- 🔇 常驻后台、零界面、零托盘图标，到点静默切换
+- 🔇 后台静默切换，托盘图标显示当前模式，右键菜单可手动切换/退出
 - ⚡ 切换立即生效（写注册表 + 广播 `WM_SETTINGCHANGE`），无需重启资源管理器
 
 ## 使用
@@ -23,6 +23,11 @@ ThemeSwitcher.exe New York     # 含空格的地名也可以
 
 1. `Win + R` 输入 `shell:startup`
 2. 把 `ThemeSwitcher.exe` 的快捷方式放进去
+
+### 托盘图标
+
+- 右下角常驻图标（日/夜双色），鼠标悬停显示当前模式
+- 右键菜单：立即切浅色 / 立即切深色 / 退出（手动切换后，下一个日出日落仍会自动接管）
 
 ## 编译
 

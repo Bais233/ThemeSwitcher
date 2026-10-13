@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows.Forms;
 using Microsoft.Win32;
 
 static partial class ThemeSwitcher
@@ -28,7 +29,11 @@ static partial class ThemeSwitcher
         // 广播让应用与系统主题立即生效
         SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero,
             "ImmersiveColorSet", 2, 1000, out result);
+        currentLight = light;
     }
+
+    // 供托盘显示的当前状态
+    internal static volatile bool currentLight = true;
 
     static string HttpGet(string url)
     {
@@ -40,6 +45,7 @@ static partial class ThemeSwitcher
         }
     }
 
+    [STAThread]
     static void Main(string[] args)
     {
         // 定位优先级: 数字坐标 > 地名 > IP 自动定位（实现在 ThemeSwitcher.Location.cs）
@@ -52,6 +58,16 @@ static partial class ThemeSwitcher
         else
             latlon = DetectLocation();
 
+        // 切换逻辑跑在后台线程
+        var worker = new Thread(() => RunLoop(latlon));
+        worker.IsBackground = true;
+        worker.Start();
+
+        TrayRun(); // 托盘图标 + 消息循环(阻塞直到退出)
+    }
+
+    static void RunLoop(string latlon)
+    {
         while (true)
         {
             bool light;
