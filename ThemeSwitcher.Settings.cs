@@ -233,7 +233,7 @@ static partial class ThemeSwitcher
             };
 
             form.Controls.AddRange(new Control[] {
-                grpState, grpLocation, grpTheme, grpOffset,
+                grpState, grpLocation, grpTheme, grpOffset, grpFont,
                 chkAutostart, lnkHomepage, btnRefresh, btnSaveClose });
 
             // 窗口打开期间实时刷新"下次切换"显示

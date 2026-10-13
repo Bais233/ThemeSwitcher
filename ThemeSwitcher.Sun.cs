@@ -3,12 +3,15 @@ using System;
 
 static partial class ThemeSwitcher
 {
-    // 从 sunrise-sunset.org 取当天日出/日落(UTC ISO)，转成本地时间
+    // 从 sunrise-sunset.org 取指定日期的日出/日落(UTC ISO)，转成本地时间
+    // 必须显式传本地日期: API 默认按 UTC 日取数, UTC+8 的凌晨会拿到昨天的数据导致早上不切浅色
     static DateTime GetSunEvent(string latlon, bool sunrise)
     {
+        string date = DateTime.Now.ToString("yyyy-MM-dd");
         string json = HttpGet("https://api.sunrise-sunset.org/json?lat="
             + latlon.Substring(0, latlon.IndexOf(','))
-            + "&lng=" + latlon.Substring(latlon.IndexOf(',') + 1) + "&formatted=0");
+            + "&lng=" + latlon.Substring(latlon.IndexOf(',') + 1)
+            + "&date=" + date + "&formatted=0");
         string field = sunrise ? "sunrise" : "sunset";
         int i = json.IndexOf("\"" + field + "\":\"") + field.Length + 4;
         int j = json.IndexOf('"', i);
