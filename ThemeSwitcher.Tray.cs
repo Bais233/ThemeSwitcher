@@ -8,8 +8,20 @@ static partial class ThemeSwitcher
 {
     static NotifyIcon tray;
 
-    // 统一使用系统 UI 字体(微软雅黑 UI), 避免默认字体中文回退发虚
-    internal static readonly Font UiFont = new Font("Microsoft YaHei UI", 9F);
+    // 统一界面字体(可在设置里自定义); 避免默认字体中文回退发虚
+    internal static Font UiFont = new Font("Microsoft YaHei UI", 9F);
+
+    internal static void ApplyUiFont(string familyName, float size)
+    {
+        Font next;
+        try { next = new Font(familyName, size); }
+        catch { return; }
+        if (next.Name != familyName) { next.Dispose(); return; } // 系统无此字体则忽略
+        UiFont.Dispose();
+        UiFont = next;
+        if (tray != null && tray.ContextMenuStrip != null)
+            tray.ContextMenuStrip.Font = UiFont;
+    }
 
     static void TrayRun()
     {

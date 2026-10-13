@@ -82,7 +82,8 @@ static partial class ThemeSwitcher
             locationDisplay = "IP 定位 (" + latlon + ")";
         }
         latlonCurrent = latlon;
-        AppSettings.Load(); // 加载用户设置(切换范围/偏移)
+        AppSettings.Load(); // 加载用户设置(切换范围/偏移/字体)
+        ApplyUiFont(AppSettings.FontName, AppSettings.FontSize);
 
         // 切换逻辑跑在后台线程
         var worker = new Thread(() => RunLoop());

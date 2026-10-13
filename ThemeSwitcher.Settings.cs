@@ -11,6 +11,8 @@ internal static class AppSettings
     public static bool SwitchSystem = true;    // 切换系统/任务栏主题 (SystemUsesLightTheme)
     public static int SunriseOffsetMin;        // 日出偏移(分钟, 正=推迟切浅色)
     public static int SunsetOffsetMin;         // 日落偏移(分钟, 正=推迟切深色)
+    public static string FontName = "Microsoft YaHei UI"; // 界面字体
+    public static float FontSize = 9F;                    // 界面字号
 
     static string FilePath
     {
@@ -41,6 +43,8 @@ internal static class AppSettings
                     case "SwitchSystem": if (bool.TryParse(v, out b)) SwitchSystem = b; break;
                     case "SunriseOffsetMin": if (int.TryParse(v, out n)) SunriseOffsetMin = n; break;
                     case "SunsetOffsetMin": if (int.TryParse(v, out n)) SunsetOffsetMin = n; break;
+                    case "FontName": if (v.Length > 0) FontName = v; break;
+                    case "FontSize": { float f; if (float.TryParse(v, out f) && f >= 6 && f <= 24) FontSize = f; break; }
                 }
             }
         }
@@ -55,6 +59,8 @@ internal static class AppSettings
             "SwitchSystem=" + SwitchSystem,
             "SunriseOffsetMin=" + SunriseOffsetMin,
             "SunsetOffsetMin=" + SunsetOffsetMin,
+            "FontName=" + FontName,
+            "FontSize=" + FontSize,
         });
     }
 }
@@ -96,7 +102,7 @@ static partial class ThemeSwitcher
             form.Text = "ThemeSwitcher 设置";
             form.FormBorderStyle = FormBorderStyle.FixedToolWindow;
             form.StartPosition = FormStartPosition.CenterScreen;
-            form.ClientSize = new Size(440, 330);
+            form.ClientSize = new Size(440, 400);
             form.MaximizeBox = false; form.MinimizeBox = false;
             form.ShowInTaskbar = false;
             form.Font = UiFont;
@@ -141,20 +147,52 @@ static partial class ThemeSwitcher
             var numSunset = new NumericUpDown { Location = new Point(378, 21), Width = 32, Minimum = -720, Maximum = 720, Value = AppSettings.SunsetOffsetMin };
             grpOffset.Controls.AddRange(new Control[] { lblSunrise, numSunrise, lblSunset, numSunset });
 
+            // ---- 界面字体 ----
+            var grpFont = new GroupBox { Text = "界面字体", Location = new Point(10, 302), Size = new Size(420, 56) };
+            var cmbFont = new ComboBox
+            {
+                Location = new Point(12, 22), Width = 220,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Items = { }
+            };
+            foreach (var fam in FontFamily.Families) cmbFont.Items.Add(fam.Name);
+            int idx = cmbFont.Items.IndexOf(AppSettings.FontName);
+            if (idx < 0) { cmbFont.Items.Add(AppSettings.FontName); idx = cmbFont.Items.Count - 1; }
+            cmbFont.SelectedIndex = idx;
+            var numFontSize = new NumericUpDown
+            {
+                Location = new Point(244, 21), Width = 60,
+                Minimum = 7, Maximum = 18, DecimalPlaces = 1, Increment = 0.5M,
+                Value = (decimal)AppSettings.FontSize
+            };
+            var lblFontPreview = new Label
+            {
+                Text = "预览 Aa 中文 123", Location = new Point(316, 22), AutoSize = true,
+                UseCompatibleTextRendering = true // Label 用 GDI+ 才能预览非 GDI 字体效果
+            };
+            Action updatePreview = () =>
+            {
+                try { lblFontPreview.Font = new Font((string)cmbFont.SelectedItem, (float)numFontSize.Value); } catch { }
+            };
+            cmbFont.SelectedIndexChanged += (s, e) => updatePreview();
+            numFontSize.ValueChanged += (s, e) => updatePreview();
+            updatePreview();
+            grpFont.Controls.AddRange(new Control[] { cmbFont, numFontSize, lblFontPreview });
+
             // ---- 底部行 ----
             var chkAutostart = new CheckBox
             {
-                Text = "开机自启", Location = new Point(12, 302), AutoSize = true,
+                Text = "开机自启", Location = new Point(12, 372), AutoSize = true,
                 Checked = GetAutostart()
             };
-            var lnkHomepage = new LinkLabel { Text = "项目主页", Location = new Point(110, 306), AutoSize = true };
+            var lnkHomepage = new LinkLabel { Text = "项目主页", Location = new Point(110, 376), AutoSize = true };
             lnkHomepage.LinkClicked += (s, e) =>
             {
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
                     "https://github.com/Bais233/ThemeSwitcher") { UseShellExecute = true }); } catch { }
             };
-            var btnRefresh = new Button { Text = "重新获取日出日落", Location = new Point(200, 299), Width = 135 };
-            var btnSaveClose = new Button { Text = "保存并关闭", Location = new Point(348, 299), Width = 82 };
+            var btnRefresh = new Button { Text = "重新获取日出日落", Location = new Point(200, 369), Width = 135 };
+            var btnSaveClose = new Button { Text = "保存并关闭", Location = new Point(348, 369), Width = 82 };
 
             // 定位应用
             btnLocation.Click += (s, e) =>
@@ -185,8 +223,11 @@ static partial class ThemeSwitcher
                 AppSettings.SwitchSystem = chkSystem.Checked;
                 AppSettings.SunriseOffsetMin = (int)numSunrise.Value;
                 AppSettings.SunsetOffsetMin = (int)numSunset.Value;
+                AppSettings.FontName = (string)cmbFont.SelectedItem;
+                AppSettings.FontSize = (float)numFontSize.Value;
                 AppSettings.Save();
                 SetAutostart(chkAutostart.Checked);
+                ApplyUiFont(AppSettings.FontName, AppSettings.FontSize);
                 refreshEpoch++;
                 form.Close();
             };
