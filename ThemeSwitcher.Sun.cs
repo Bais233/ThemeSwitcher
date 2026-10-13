@@ -28,6 +28,10 @@ static partial class ThemeSwitcher
         }
         catch { /* 网络失败时稍后重试 */ }
 
+        // 应用用户设置的日出/日落偏移
+        if (rise.HasValue) rise = rise.Value.AddMinutes(AppSettings.SunriseOffsetMin);
+        if (set.HasValue) set = set.Value.AddMinutes(AppSettings.SunsetOffsetMin);
+
         if (rise.HasValue && now < rise.Value) { light = true; return rise.Value; }
         if (set.HasValue && now < set.Value) { light = false; return set.Value; }
 

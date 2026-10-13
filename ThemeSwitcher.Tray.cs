@@ -36,6 +36,9 @@ static partial class ThemeSwitcher
         menu.Items.Add("更改定位…", null, (s, e) => PromptLocation());
         menu.Items.Add(new ToolStripSeparator());
 
+        // 设置
+        menu.Items.Add("设置…", null, (s, e) => ShowSettings());
+
         // 开机自启(注册表 Run 键)
         autostartItem = new ToolStripMenuItem("开机自启");
         autostartItem.Checked = GetAutostart();

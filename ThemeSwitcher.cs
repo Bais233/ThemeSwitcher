@@ -22,8 +22,11 @@ static partial class ThemeSwitcher
         using (var key = Registry.CurrentUser.OpenSubKey(
             @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", true))
         {
-            key.SetValue("AppsUseLightTheme", light ? 1 : 0, RegistryValueKind.DWord);
-            key.SetValue("SystemUsesLightTheme", light ? 1 : 0, RegistryValueKind.DWord);
+            // 按用户设置决定改哪些项(设置窗口里可自定义)
+            if (AppSettings.SwitchApps)
+                key.SetValue("AppsUseLightTheme", light ? 1 : 0, RegistryValueKind.DWord);
+            if (AppSettings.SwitchSystem)
+                key.SetValue("SystemUsesLightTheme", light ? 1 : 0, RegistryValueKind.DWord);
         }
         UIntPtr result;
         // 广播让应用与系统主题立即生效
@@ -79,6 +82,7 @@ static partial class ThemeSwitcher
             locationDisplay = "IP 定位 (" + latlon + ")";
         }
         latlonCurrent = latlon;
+        AppSettings.Load(); // 加载用户设置(切换范围/偏移)
 
         // 切换逻辑跑在后台线程
         var worker = new Thread(() => RunLoop());
