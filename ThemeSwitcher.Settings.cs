@@ -61,7 +61,34 @@ internal static class AppSettings
 
 static partial class ThemeSwitcher
 {
-    // 设置窗口; 保存后刷新重算
+    // 解析定位输入: "纬度,经度" 或 地名(Nominatim); 返回 false 表示解析失败
+    static bool TryParseLocationInput(string input, out string latlon, out string display)
+    {
+        latlon = null; display = null;
+        input = (input ?? "").Trim();
+        if (input.Length == 0) return false;
+
+        double lat, lon;
+        if (input.Contains(",") &&
+            double.TryParse(input.Split(',')[0].Trim(), out lat) &&
+            double.TryParse(input.Split(',')[1].Trim(), out lon))
+        {
+            latlon = lat + "," + lon;
+            display = latlon;
+            return true;
+        }
+
+        try
+        {
+            latlon = Geocode(input);
+            if (latlon == null || latlon.Length == 0 || latlon == ",") return false;
+            display = input + " (" + latlon + ")";
+            return true;
+        }
+        catch { return false; }
+    }
+
+    // 设置窗口(托盘菜单"设置…"打开)
     internal static void ShowSettings()
     {
         using (var form = new Form())
@@ -69,53 +96,118 @@ static partial class ThemeSwitcher
             form.Text = "ThemeSwitcher 设置";
             form.FormBorderStyle = FormBorderStyle.FixedToolWindow;
             form.StartPosition = FormStartPosition.CenterScreen;
-            form.ClientSize = new Size(400, 210);
+            form.ClientSize = new Size(440, 330);
             form.MaximizeBox = false; form.MinimizeBox = false;
             form.ShowInTaskbar = false;
+            form.Font = UiFont;
 
+            // ---- 状态 ----
+            var grpState = new GroupBox { Text = "状态", Location = new Point(10, 10), Size = new Size(420, 72) };
+            var lblLocation = new Label { Location = new Point(12, 22), AutoSize = true, Text = "定位：" + locationDisplay };
+            var lblNext = new Label { Location = new Point(12, 46), AutoSize = true, Text = "下次切换：…" };
+            grpState.Controls.Add(lblLocation);
+            grpState.Controls.Add(lblNext);
+
+            // ---- 定位 ----
+            var grpLocation = new GroupBox { Text = "定位", Location = new Point(10, 88), Size = new Size(420, 72) };
+            var txtLocation = new TextBox { Location = new Point(12, 22), Width = 320, Text = latlonCurrent };
+            var btnLocation = new Button { Text = "应用", Location = new Point(340, 20), Width = 68 };
+            var lblLocationHint = new Label
+            {
+                Location = new Point(12, 50), AutoSize = true, ForeColor = SystemColors.GrayText,
+                Text = "城市名（如：上海 / New York）或经纬度（如：31.23,121.47）"
+            };
+            grpLocation.Controls.AddRange(new Control[] { txtLocation, btnLocation, lblLocationHint });
+
+            // ---- 主题切换 ----
+            var grpTheme = new GroupBox { Text = "「深色模式」切换哪些项", Location = new Point(10, 166), Size = new Size(420, 70) };
             var chkApps = new CheckBox
             {
-                Text = "切换应用主题（UWP / 资源管理器等 AppsUseLightTheme）",
-                Location = new Point(12, 12), AutoSize = true,
-                Checked = AppSettings.SwitchApps
+                Text = "应用主题（UWP / 资源管理器等 AppsUseLightTheme）",
+                Location = new Point(12, 20), AutoSize = true, Checked = AppSettings.SwitchApps
             };
             var chkSystem = new CheckBox
             {
-                Text = "切换系统主题（任务栏 / 开始菜单 SystemUsesLightTheme）",
-                Location = new Point(12, 40), AutoSize = true,
-                Checked = AppSettings.SwitchSystem
+                Text = "系统主题（任务栏 / 开始菜单 SystemUsesLightTheme）",
+                Location = new Point(12, 44), AutoSize = true, Checked = AppSettings.SwitchSystem
             };
+            grpTheme.Controls.AddRange(new Control[] { chkApps, chkSystem });
 
-            var lblSunrise = new Label { Text = "日出偏移(分钟，正=推迟切浅色)：", Location = new Point(12, 78), AutoSize = true };
-            var numSunrise = new NumericUpDown { Location = new Point(240, 74), Width = 70, Minimum = -720, Maximum = 720, Value = AppSettings.SunriseOffsetMin };
+            // ---- 时机偏移 ----
+            var grpOffset = new GroupBox { Text = "切换时机偏移（分钟）", Location = new Point(10, 242), Size = new Size(420, 54) };
+            var lblSunrise = new Label { Text = "日出（正=推迟浅色）：", Location = new Point(12, 24), AutoSize = true };
+            var numSunrise = new NumericUpDown { Location = new Point(150, 21), Width = 70, Minimum = -720, Maximum = 720, Value = AppSettings.SunriseOffsetMin };
+            var lblSunset = new Label { Text = "日落（正=推迟深色）：", Location = new Point(240, 24), AutoSize = true };
+            var numSunset = new NumericUpDown { Location = new Point(378, 21), Width = 32, Minimum = -720, Maximum = 720, Value = AppSettings.SunsetOffsetMin };
+            grpOffset.Controls.AddRange(new Control[] { lblSunrise, numSunrise, lblSunset, numSunset });
 
-            var lblSunset = new Label { Text = "日落偏移(分钟，正=推迟切深色)：", Location = new Point(12, 108), AutoSize = true };
-            var numSunset = new NumericUpDown { Location = new Point(240, 104), Width = 70, Minimum = -720, Maximum = 720, Value = AppSettings.SunsetOffsetMin };
-
-            var note = new Label
+            // ---- 底部行 ----
+            var chkAutostart = new CheckBox
             {
-                Text = "注：两项主题都不勾选时，到点不修改系统设置。",
-                Location = new Point(12, 138), AutoSize = true,
-                ForeColor = SystemColors.GrayText
+                Text = "开机自启", Location = new Point(12, 302), AutoSize = true,
+                Checked = GetAutostart()
+            };
+            var lnkHomepage = new LinkLabel { Text = "项目主页", Location = new Point(110, 306), AutoSize = true };
+            lnkHomepage.LinkClicked += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "https://github.com/Bais233/ThemeSwitcher") { UseShellExecute = true }); } catch { }
+            };
+            var btnRefresh = new Button { Text = "重新获取日出日落", Location = new Point(200, 299), Width = 135 };
+            var btnSaveClose = new Button { Text = "保存并关闭", Location = new Point(348, 299), Width = 82 };
+
+            // 定位应用
+            btnLocation.Click += (s, e) =>
+            {
+                string ll, disp;
+                if (TryParseLocationInput(txtLocation.Text, out ll, out disp))
+                {
+                    ChangeLocation(ll, disp);
+                    lblLocation.Text = "定位：" + locationDisplay;
+                    txtLocation.Text = ll;
+                    MessageBox.Show(form, "定位已生效，正在重新计算切换时间。", "ThemeSwitcher",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(form, "定位解析失败，请检查输入（需联网解析地名）。", "ThemeSwitcher",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             };
 
-            var ok = new Button { Text = "保存", DialogResult = DialogResult.OK, Location = new Point(225, 170), Width = 80 };
-            var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Location = new Point(315, 170), Width = 80 };
-            form.Controls.AddRange(new Control[] {
-                chkApps, chkSystem, lblSunrise, numSunrise, lblSunset, numSunset, note, ok, cancel });
-            form.AcceptButton = ok; form.CancelButton = cancel;
+            // 刷新日出日落
+            btnRefresh.Click += (s, e) => refreshEpoch++;
 
-            if (form.ShowDialog() == DialogResult.OK)
+            // 保存并关闭
+            btnSaveClose.Click += (s, e) =>
             {
                 AppSettings.SwitchApps = chkApps.Checked;
                 AppSettings.SwitchSystem = chkSystem.Checked;
                 AppSettings.SunriseOffsetMin = (int)numSunrise.Value;
                 AppSettings.SunsetOffsetMin = (int)numSunset.Value;
                 AppSettings.Save();
-                refreshEpoch++; // 重新计算下次切换时刻
-                if (tray != null)
-                    tray.ShowBalloonTip(2000, "ThemeSwitcher", "设置已保存并生效", ToolTipIcon.Info);
-            }
+                SetAutostart(chkAutostart.Checked);
+                refreshEpoch++;
+                form.Close();
+            };
+
+            form.Controls.AddRange(new Control[] {
+                grpState, grpLocation, grpTheme, grpOffset,
+                chkAutostart, lnkHomepage, btnRefresh, btnSaveClose });
+
+            // 窗口打开期间实时刷新"下次切换"显示
+            var timer = new System.Windows.Forms.Timer { Interval = 1000 };
+            timer.Tick += (s, e) =>
+            {
+                if (nextSwitchTime == DateTime.MaxValue)
+                    lblNext.Text = "下次切换：获取中…";
+                else
+                    lblNext.Text = string.Format("下次切换：{0:HH:mm} → {1}", nextSwitchTime, nextSwitchLight ? "浅色" : "深色");
+            };
+            timer.Start();
+            form.FormClosed += (s, e) => timer.Dispose();
+
+            form.ShowDialog();
         }
     }
 }
