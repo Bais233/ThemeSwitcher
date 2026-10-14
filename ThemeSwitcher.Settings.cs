@@ -173,10 +173,13 @@ static partial class ThemeSwitcher
             form.ClientSize = new Size(440, 486);
             form.MaximizeBox = false; form.MinimizeBox = false;
             form.Font = UiFont;
-            form.BackColor = Color.FromArgb(32, 32, 32);
+            // 跟随当前主题: 深色模式=深色界面+深色标题栏; 浅色模式=系统默认浅色
+            bool dark = !currentLight;
+            if (dark) form.BackColor = Color.FromArgb(32, 32, 32);
+            else form.BackColor = SystemColors.Control;
             form.KeyPreview = true;
             form.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) form.Close(); };
-            form.Shown += (s, e) => EnableDarkTitleBar(form);
+            if (dark) form.Shown += (s, e) => EnableDarkTitleBar(form);
 
             // ---- 状态 ----
             var grpState = new GroupBox { Text = "状态", Location = new Point(10, 10), Size = new Size(420, 72) };
@@ -345,7 +348,7 @@ static partial class ThemeSwitcher
             form.Controls.AddRange(new Control[] {
                 grpState, grpLocation, grpTheme, grpOffset, grpFont,
                 chkAutostart, lnkHomepage, btnRefresh, btnSaveClose });
-            foreach (Control root in form.Controls) StyleDark(root);
+            if (dark) foreach (Control root in form.Controls) StyleDark(root);
 
             // 窗口打开期间实时刷新"下次切换"显示
             var timer = new System.Windows.Forms.Timer { Interval = 1000 };
