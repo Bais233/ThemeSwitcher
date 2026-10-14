@@ -21,8 +21,20 @@ static partial class ThemeSwitcher
         if (next.Name != familyName) { next.Dispose(); return; } // 系统无此字体则忽略
         UiFont = next;
         if (tray != null && tray.ContextMenuStrip != null)
+        {
             tray.ContextMenuStrip.Font = UiFont;
+            int px = GlyphPx;
+            if (tray.ContextMenuStrip.ImageScalingSize != new Size(px, px))
+            {
+                tray.ContextMenuStrip.ImageScalingSize = new Size(px, px);
+                RefreshMenuIcons(tray.ContextMenuStrip, menuDark);
+            }
+        }
     }
+
+    // 菜单图标/行距按字体高度走, 高分屏(200% 缩放)下不会缩成一小点
+    static int GlyphPx { get { return Math.Max(16, TextRenderer.MeasureText("Ag", UiFont).Height); } }
+    static int RowPad { get { return Math.Max(3, TextRenderer.MeasureText("Ag", UiFont).Height / 3); } }
 
     static bool menuDark;
 
@@ -38,25 +50,37 @@ static partial class ThemeSwitcher
     {
         menu.Renderer = new ToolStripProfessionalRenderer(new ThemeColors(dark)) { RoundedEdges = false };
         Color text = dark ? Color.FromArgb(235, 235, 235) : Color.FromArgb(32, 32, 32);
-        foreach (ToolStripItem it in menu.Items)
-        {
-            it.ForeColor = text;
-            var glyph = it.Tag as string;
-            if (glyph != null) it.Image = GlyphIcon(glyph, dark);
-        }
+        foreach (ToolStripItem it in menu.Items) it.ForeColor = text;
+        RefreshMenuIcons(menu, dark);
         menuDark = dark;
     }
 
-    // 用 Segoe MDL2 Assets 字体渲染 16x16 图标(深浅两套颜色)
+    static void RefreshMenuIcons(ContextMenuStrip menu, bool dark)
+    {
+        foreach (ToolStripItem it in menu.Items)
+        {
+            var glyph = it.Tag as string;
+            if (glyph != null) it.Image = GlyphIcon(glyph, dark);
+        }
+    }
+
+    // 用 Segoe MDL2 Assets 字体渲染菜单图标(深浅两套颜色)
     static Bitmap GlyphIcon(string glyph, bool dark)
     {
-        var bmp = new Bitmap(16, 16);
+        int px = GlyphPx;
+        var bmp = new Bitmap(px, px);
         using (var g = Graphics.FromImage(bmp))
+        using (var fnt = new Font("Segoe MDL2 Assets", px * 0.72F, GraphicsUnit.Pixel))
+        using (var brush = new SolidBrush(dark ? Color.White : Color.FromArgb(32, 32, 32)))
         {
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-            Brush brush = dark ? Brushes.White : Brushes.Black;
-            g.DrawString(glyph, new Font("Segoe MDL2 Assets", 9.5F), brush,
-                new RectangleF(0, -1, 16, 18), new StringFormat { Alignment = StringAlignment.Center });
+            // 透明底图上用灰度抗锯齿, ClearType 在透明背景上会带彩色边
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            var fmt = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center
+            };
+            g.DrawString(glyph, fnt, brush, new RectangleF(0, 0, px, px), fmt);
         }
         return bmp;
     }
@@ -70,10 +94,12 @@ static partial class ThemeSwitcher
         tray.Text = "ThemeSwitcher";
         tray.Visible = true;
 
+        int px = GlyphPx;
         var menu = new ContextMenuStrip
         {
             Font = UiFont,
             ShowImageMargin = true,
+            ImageScalingSize = new Size(px, px),
             Renderer = new ToolStripProfessionalRenderer(new ThemeColors(!currentLight)) { RoundedEdges = false }
         };
         menu.Items.Add(CreateItem("\uE706", "切换到浅色模式", () => SetTheme(true)));
@@ -85,7 +111,8 @@ static partial class ThemeSwitcher
             tray.Visible = false;
             Application.Exit();
         }));
-        foreach (ToolStripItem it in menu.Items) it.Padding = new Padding(0, 5, 0, 5);
+        int rp = RowPad;
+        foreach (ToolStripItem it in menu.Items) it.Padding = new Padding(0, rp, 0, rp);
         menuDark = !currentLight;
         tray.ContextMenuStrip = menu;
 
@@ -96,10 +123,12 @@ static partial class ThemeSwitcher
             if (dark != menuDark) ApplyMenuTheme(menu, dark);
         };
 
-        // 悬停提示跟随模式
+        // 悬停提示/主题状态/设置变更轮询
         var timer = new System.Windows.Forms.Timer { Interval = 2000 };
         timer.Tick += (s, e) =>
         {
+            SyncCurrentTheme();          // 用户在系统设置里手动改主题也能跟上
+            ReloadSettingsIfChanged();   // 别的实例保存过设置也能跟上
             tray.Text = "ThemeSwitcher — " + (currentLight ? "浅色模式" : "深色模式");
         };
         timer.Start();

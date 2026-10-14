@@ -1,6 +1,7 @@
 // ThemeSwitcher — 按日出日落自动切换 Windows 深色/浅色模式（网络版）
 // 编译: build.bat  (用 Windows 自带的 csc.exe)
 // 用法: ThemeSwitcher.exe [坐标或地名]，无参数则按 IP 定位
+//       ThemeSwitcher.exe --settings [坐标或地名] 只打开设置窗口(不装托盘)
 using System;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -45,6 +46,39 @@ static partial class ThemeSwitcher
     internal static bool nextSwitchLight;                          // 下次切换到的模式
     internal static volatile int refreshEpoch;                     // +1 表示要求重新拉取日出日落/重算
 
+    // 读取注册表里的真实深浅色状态: 开机时系统可能已经是深色, 不读就会按浅色画界面
+    static void SyncCurrentTheme()
+    {
+        try
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+            {
+                if (key == null) return;
+                object v = key.GetValue("AppsUseLightTheme") ?? key.GetValue("SystemUsesLightTheme");
+                int n;
+                if (v != null && int.TryParse(v.ToString(), out n)) currentLight = n != 0;
+            }
+        }
+        catch { /* 读不到就沿用当前值 */ }
+    }
+
+    // 设置文件被改动过(例如另一个实例用 --settings 保存)时热加载
+    static DateTime settingsStamp = DateTime.MinValue;
+    static void ReloadSettingsIfChanged()
+    {
+        try
+        {
+            DateTime t = AppSettings.Timestamp;
+            if (t == settingsStamp) return;
+            settingsStamp = t;
+            AppSettings.Load();
+            ApplyUiFont(AppSettings.FontName, AppSettings.FontSize);
+            refreshEpoch++;
+        }
+        catch { }
+    }
+
     // 运行时切换定位(托盘菜单调用); 直接生效, 后台线程会自动重算
     internal static void ChangeLocation(string latlon, string display)
     {
@@ -66,6 +100,14 @@ static partial class ThemeSwitcher
     [STAThread]
     static void Main(string[] args)
     {
+        bool settingsOnly = args.Length >= 1 && args[0] == "--settings";
+        if (settingsOnly)
+        {
+            var rest = new string[args.Length - 1];
+            Array.Copy(args, 1, rest, 0, rest.Length);
+            args = rest;
+        }
+
         // 定位优先级: 数字坐标 > 地名 > IP 自动定位（实现在 ThemeSwitcher.Location.cs）
         string latlon;
         double dummy;
@@ -86,12 +128,21 @@ static partial class ThemeSwitcher
         }
         latlonCurrent = latlon;
         AppSettings.Load(); // 加载用户设置(切换范围/偏移/字体)
+        SyncCurrentTheme(); // 先确定当前是深色还是浅色, 菜单和设置窗口才不会被画错
+        settingsStamp = AppSettings.Timestamp;
         ApplyUiFont(AppSettings.FontName, AppSettings.FontSize);
 
         // 切换逻辑跑在后台线程
         var worker = new Thread(() => RunLoop());
         worker.IsBackground = true;
         worker.Start();
+
+        if (settingsOnly)
+        {
+            Application.EnableVisualStyles();
+            ShowSettings();
+            return;
+        }
 
         TrayRun(); // 托盘图标 + 消息循环(阻塞直到退出)
     }
