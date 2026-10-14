@@ -28,6 +28,9 @@ static partial class ThemeSwitcher
             if (AppSettings.SwitchSystem)
                 key.SetValue("SystemUsesLightTheme", light ? 1 : 0, RegistryValueKind.DWord);
         }
+        // 同步切换鼠标指针方案(抄 Auto Dark Mode 的个性化>光标)
+        if (AppSettings.SwitchCursor)
+            ApplyCursorScheme(light ? AppSettings.CursorLightScheme : AppSettings.CursorDarkScheme);
         UIntPtr result;
         // 广播让应用与系统主题立即生效
         SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero,

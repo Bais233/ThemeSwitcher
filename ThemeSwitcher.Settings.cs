@@ -13,6 +13,9 @@ internal static class AppSettings
     public static int SunsetOffsetMin;         // 日落偏移(分钟, 正=推迟切深色)
     public static string FontName = "Microsoft YaHei UI"; // 界面字体
     public static float FontSize = 9F;                    // 界面字号
+    public static bool SwitchCursor;                      // 切换时同步切换鼠标指针方案
+    public static string CursorLightScheme = "";          // 浅色指针方案
+    public static string CursorDarkScheme = "";           // 深色指针方案
 
     static string FilePath
     {
@@ -45,6 +48,9 @@ internal static class AppSettings
                     case "SunsetOffsetMin": if (int.TryParse(v, out n)) SunsetOffsetMin = n; break;
                     case "FontName": if (v.Length > 0) FontName = v; break;
                     case "FontSize": { float f; if (float.TryParse(v, out f) && f >= 6 && f <= 24) FontSize = f; break; }
+                    case "SwitchCursor": if (bool.TryParse(v, out b)) SwitchCursor = b; break;
+                    case "CursorLightScheme": CursorLightScheme = v; break;
+                    case "CursorDarkScheme": CursorDarkScheme = v; break;
                 }
             }
         }
@@ -61,6 +67,9 @@ internal static class AppSettings
             "SunsetOffsetMin=" + SunsetOffsetMin,
             "FontName=" + FontName,
             "FontSize=" + FontSize,
+            "SwitchCursor=" + SwitchCursor,
+            "CursorLightScheme=" + CursorLightScheme,
+            "CursorDarkScheme=" + CursorDarkScheme,
         });
     }
 }
@@ -102,7 +111,7 @@ static partial class ThemeSwitcher
             form.Text = "ThemeSwitcher 设置";
             form.FormBorderStyle = FormBorderStyle.FixedToolWindow;
             form.StartPosition = FormStartPosition.CenterScreen;
-            form.ClientSize = new Size(440, 400);
+            form.ClientSize = new Size(440, 486);
             form.MaximizeBox = false; form.MinimizeBox = false;
             form.ShowInTaskbar = false;
             form.Font = UiFont;
@@ -179,20 +188,53 @@ static partial class ThemeSwitcher
             updatePreview();
             grpFont.Controls.AddRange(new Control[] { cmbFont, numFontSize, lblFontPreview });
 
+            // ---- 鼠标指针 ----
+            var grpCursor = new GroupBox { Text = "鼠标指针", Location = new Point(10, 364), Size = new Size(420, 80) };
+            var chkCursor = new CheckBox
+            {
+                Text = "切换主题时同步切换指针方案",
+                Location = new Point(12, 20), AutoSize = true,
+                Checked = AppSettings.SwitchCursor
+            };
+            var schemes = GetCursorSchemes();
+            var cmbLightCur = new ComboBox
+            {
+                Location = new Point(12, 46), Width = 190, DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            var cmbDarkCur = new ComboBox
+            {
+                Location = new Point(228, 46), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            foreach (var sc in schemes) { cmbLightCur.Items.Add(sc); cmbDarkCur.Items.Add(sc); }
+            Action<ComboBox, string> selectScheme = (cb, name) =>
+            {
+                int i = cb.Items.IndexOf(string.IsNullOrEmpty(name) ? DefaultSchemeName : name);
+                cb.SelectedIndex = i >= 0 ? i : 0;
+            };
+            selectScheme(cmbLightCur, AppSettings.CursorLightScheme);
+            selectScheme(cmbDarkCur, AppSettings.CursorDarkScheme);
+            Action updateCursorUi = () =>
+            {
+                cmbLightCur.Enabled = cmbDarkCur.Enabled = chkCursor.Checked;
+            };
+            chkCursor.CheckedChanged += (s, e) => updateCursorUi();
+            updateCursorUi();
+            grpCursor.Controls.AddRange(new Control[] { chkCursor, cmbLightCur, cmbDarkCur });
+
             // ---- 底部行 ----
             var chkAutostart = new CheckBox
             {
-                Text = "开机自启", Location = new Point(12, 372), AutoSize = true,
+                Text = "开机自启", Location = new Point(12, 452), AutoSize = true,
                 Checked = GetAutostart()
             };
-            var lnkHomepage = new LinkLabel { Text = "项目主页", Location = new Point(110, 376), AutoSize = true };
+            var lnkHomepage = new LinkLabel { Text = "项目主页", Location = new Point(110, 456), AutoSize = true };
             lnkHomepage.LinkClicked += (s, e) =>
             {
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
                     "https://github.com/Bais233/ThemeSwitcher") { UseShellExecute = true }); } catch { }
             };
-            var btnRefresh = new Button { Text = "重新获取日出日落", Location = new Point(200, 369), Width = 135 };
-            var btnSaveClose = new Button { Text = "保存并关闭", Location = new Point(348, 369), Width = 82 };
+            var btnRefresh = new Button { Text = "重新获取日出日落", Location = new Point(200, 449), Width = 135 };
+            var btnSaveClose = new Button { Text = "保存并关闭", Location = new Point(348, 449), Width = 82 };
 
             // 定位应用
             btnLocation.Click += (s, e) =>
@@ -225,9 +267,15 @@ static partial class ThemeSwitcher
                 AppSettings.SunsetOffsetMin = (int)numSunset.Value;
                 AppSettings.FontName = (string)cmbFont.SelectedItem;
                 AppSettings.FontSize = (float)numFontSize.Value;
+                AppSettings.SwitchCursor = chkCursor.Checked;
+                AppSettings.CursorLightScheme = (string)cmbLightCur.SelectedItem;
+                AppSettings.CursorDarkScheme = (string)cmbDarkCur.SelectedItem;
                 AppSettings.Save();
                 SetAutostart(chkAutostart.Checked);
                 ApplyUiFont(AppSettings.FontName, AppSettings.FontSize);
+                // 指针方案立即应用一次, 便于看到效果
+                if (AppSettings.SwitchCursor)
+                    ApplyCursorScheme(currentLight ? AppSettings.CursorLightScheme : AppSettings.CursorDarkScheme);
                 refreshEpoch++;
                 form.Close();
             };
