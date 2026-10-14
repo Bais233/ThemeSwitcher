@@ -7,8 +7,6 @@ using Microsoft.Win32;
 static partial class ThemeSwitcher
 {
     static NotifyIcon tray;
-    static ContextMenuStrip menu;
-    static bool menuIsDark;
 
     // 统一界面字体(可在设置里自定义); 避免默认字体中文回退发虚
     internal static Font UiFont = new Font("Microsoft YaHei UI", 9F);
@@ -34,42 +32,32 @@ static partial class ThemeSwitcher
         tray.Text = "ThemeSwitcher";
         tray.Visible = true;
 
-        menu = new ContextMenuStrip { Font = UiFont, ShowImageMargin = false };
-        menu.Items.Add(MenuText(true), null, (s, e) => SetTheme(true));
-        menu.Items.Add(MenuText(false), null, (s, e) => SetTheme(false));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("⚙  设置…", null, (s, e) => ShowSettings());
-        menu.Items.Add("退出", null, (s, e) =>
+        // 自绘亚克力弹出菜单(仿 TranslucentTB)
+        var flyout = new FlyoutMenu();
+        flyout.AddItem("\uE706", "切换到浅色模式", () => SetTheme(true));   // MDL2 太阳
+        flyout.AddItem("\uE708", "切换到深色模式", () => SetTheme(false));  // MDL2 月亮
+        flyout.AddSeparator();
+        flyout.AddItem("\uE713", "设置…", ShowSettings);                     // MDL2 齿轮
+        flyout.AddItem("\uE7E8", "退出", () =>
         {
             tray.Visible = false;
             Application.Exit();
         });
-        foreach (ToolStripItem it in menu.Items) it.Padding = new Padding(2, 7, 2, 7);
-        StyleMenu(); // 按当前主题配色
-        tray.ContextMenuStrip = menu;
 
-        // 定时: 悬停提示跟随模式; 菜单配色跟随主题
+        tray.MouseUp += (s, e) =>
+        {
+            if (e.Button == MouseButtons.Right) flyout.ShowAt(Cursor.Position);
+        };
+
+        // 悬停提示跟随模式
         var timer = new System.Windows.Forms.Timer { Interval = 2000 };
         timer.Tick += (s, e) =>
         {
             tray.Text = "ThemeSwitcher — " + (currentLight ? "浅色模式" : "深色模式");
-            if (menuIsDark == currentLight) StyleMenu();
         };
         timer.Start();
 
         Application.Run(); // 消息循环, 直到菜单选"退出"
-    }
-
-    static string MenuText(bool light) { return (light ? "☀  " : "🌙  ") + "切换到" + (light ? "浅色" : "深色") + "模式"; }
-
-    // 菜单配色跟随当前主题(深色模式=深灰菜单, 浅色模式=白菜单)
-    static void StyleMenu()
-    {
-        bool dark = !currentLight;
-        menu.Renderer = new ToolStripProfessionalRenderer(new ThemeMenuColors(dark)) { RoundedEdges = false };
-        Color text = dark ? Color.FromArgb(235, 235, 235) : Color.FromArgb(32, 32, 32);
-        foreach (ToolStripItem it in menu.Items) it.ForeColor = text;
-        menuIsDark = dark;
     }
 
     static Icon LoadAppIcon()
@@ -77,36 +65,6 @@ static partial class ThemeSwitcher
         try { return Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch { return SystemIcons.Application; }
     }
-}
-
-// 现代扁平配色的菜单渲染表
-internal class ThemeMenuColors : ProfessionalColorTable
-{
-    readonly bool dark;
-    public ThemeMenuColors(bool dark) { this.dark = dark; UseSystemColors = false; }
-
-    Color Bg       { get { return dark ? Color.FromArgb(32, 32, 32)   : Color.White; } }
-    Color Hover    { get { return dark ? Color.FromArgb(55, 55, 55)   : Color.FromArgb(240, 240, 240); } }
-    Color Border   { get { return dark ? Color.FromArgb(63, 63, 63)   : Color.FromArgb(229, 229, 229); } }
-    Color Separator{ get { return dark ? Color.FromArgb(48, 48, 48)   : Color.FromArgb(235, 235, 235); } }
-
-    public override Color ToolStripDropDownBackground { get { return Bg; } }
-    public override Color MenuBorder { get { return Border; } }
-    public override Color MenuItemBorder { get { return Color.Transparent; } }
-    public override Color MenuItemSelected { get { return Hover; } }
-    public override Color MenuItemSelectedGradientBegin { get { return Hover; } }
-    public override Color MenuItemSelectedGradientEnd { get { return Hover; } }
-    public override Color MenuItemPressedGradientBegin { get { return Hover; } }
-    public override Color MenuItemPressedGradientEnd { get { return Hover; } }
-    public override Color ImageMarginGradientBegin { get { return Bg; } }
-    public override Color ImageMarginGradientMiddle { get { return Bg; } }
-    public override Color ImageMarginGradientEnd { get { return Bg; } }
-    public override Color SeparatorDark { get { return Separator; } }
-    public override Color SeparatorLight { get { return Separator; } }
-    public override Color ToolStripBorder { get { return Bg; } }
-    public override Color ToolStripGradientBegin { get { return Bg; } }
-    public override Color ToolStripGradientMiddle { get { return Bg; } }
-    public override Color ToolStripGradientEnd { get { return Bg; } }
 }
 
 // ---- 开机自启(HKCU Run 键) ----
