@@ -1,6 +1,8 @@
 // ThemeSwitcher.Tray.cs — 系统托盘图标与右键菜单（partial class 的一部分）
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -17,10 +19,22 @@ static partial class ThemeSwitcher
         try { next = new Font(familyName, size); }
         catch { return; }
         if (next.Name != familyName) { next.Dispose(); return; } // 系统无此字体则忽略
-        // 注意: 旧字体可能仍被菜单引用, 不主动 Dispose, 交给 GC
         UiFont = next;
         if (tray != null && tray.ContextMenuStrip != null)
             tray.ContextMenuStrip.Font = UiFont;
+    }
+
+    // 用 Segoe MDL2 Assets 字体渲染 16x16 图标
+    static Bitmap GlyphIcon(string glyph)
+    {
+        var bmp = new Bitmap(16, 16);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            g.DrawString(glyph, new Font("Segoe MDL2 Assets", 9.5F), Brushes.White,
+                new RectangleF(0, -1, 16, 18), new StringFormat { Alignment = StringAlignment.Center });
+        }
+        return bmp;
     }
 
     static void TrayRun()
@@ -32,22 +46,23 @@ static partial class ThemeSwitcher
         tray.Text = "ThemeSwitcher";
         tray.Visible = true;
 
-        // 自绘亚克力弹出菜单(仿 TranslucentTB)
-        var flyout = new FlyoutMenu();
-        flyout.AddItem("\uE706", "切换到浅色模式", () => SetTheme(true));   // MDL2 太阳
-        flyout.AddItem("\uE708", "切换到深色模式", () => SetTheme(false));  // MDL2 月亮
-        flyout.AddSeparator();
-        flyout.AddItem("\uE713", "设置…", ShowSettings);                     // MDL2 齿轮
-        flyout.AddItem("\uE7E8", "退出", () =>
+        var menu = new ContextMenuStrip
+        {
+            Font = UiFont,
+            ShowImageMargin = true,
+            Renderer = new ToolStripProfessionalRenderer(new NativeDarkColors()) { RoundedEdges = false }
+        };
+        menu.Items.Add(CreateItem("\uE706", "切换到浅色模式", () => SetTheme(true)));
+        menu.Items.Add(CreateItem("\uE708", "切换到深色模式", () => SetTheme(false)));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(CreateItem("\uE713", "设置…", ShowSettings));
+        menu.Items.Add(CreateItem("\uE7E8", "退出", () =>
         {
             tray.Visible = false;
             Application.Exit();
-        });
-
-        tray.MouseUp += (s, e) =>
-        {
-            if (e.Button == MouseButtons.Right) flyout.ShowAt(Cursor.Position);
-        };
+        }));
+        foreach (ToolStripItem it in menu.Items) it.Padding = new Padding(0, 5, 0, 5);
+        tray.ContextMenuStrip = menu;
 
         // 悬停提示跟随模式
         var timer = new System.Windows.Forms.Timer { Interval = 2000 };
@@ -60,11 +75,45 @@ static partial class ThemeSwitcher
         Application.Run(); // 消息循环, 直到菜单选"退出"
     }
 
+    static ToolStripMenuItem CreateItem(string glyph, string text, Action click)
+    {
+        return new ToolStripMenuItem(text, GlyphIcon(glyph), (s, e) => click());
+    }
+
     static Icon LoadAppIcon()
     {
         try { return Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch { return SystemIcons.Application; }
     }
+}
+
+// 原生深色菜单配色(实色, 无模糊, 响应快)
+internal class NativeDarkColors : ProfessionalColorTable
+{
+    readonly Color bg = Color.FromArgb(32, 32, 32);
+    readonly Color hover = Color.FromArgb(45, 45, 45);
+    readonly Color border = Color.FromArgb(60, 60, 60);
+    readonly Color sep = Color.FromArgb(50, 50, 50);
+
+    public NativeDarkColors() { UseSystemColors = false; }
+
+    public override Color ToolStripDropDownBackground { get { return bg; } }
+    public override Color MenuBorder { get { return border; } }
+    public override Color MenuItemBorder { get { return Color.Transparent; } }
+    public override Color MenuItemSelected { get { return hover; } }
+    public override Color MenuItemSelectedGradientBegin { get { return hover; } }
+    public override Color MenuItemSelectedGradientEnd { get { return hover; } }
+    public override Color MenuItemPressedGradientBegin { get { return hover; } }
+    public override Color MenuItemPressedGradientEnd { get { return hover; } }
+    public override Color ImageMarginGradientBegin { get { return bg; } }
+    public override Color ImageMarginGradientMiddle { get { return bg; } }
+    public override Color ImageMarginGradientEnd { get { return bg; } }
+    public override Color SeparatorDark { get { return sep; } }
+    public override Color SeparatorLight { get { return sep; } }
+    public override Color ToolStripBorder { get { return border; } }
+    public override Color ToolStripGradientBegin { get { return bg; } }
+    public override Color ToolStripGradientMiddle { get { return bg; } }
+    public override Color ToolStripGradientEnd { get { return bg; } }
 }
 
 // ---- 开机自启(HKCU Run 键) ----

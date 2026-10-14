@@ -76,17 +76,32 @@ internal static class AppSettings
 
 static partial class ThemeSwitcher
 {
+    // Win10 1809+ 深色标题栏
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern void DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    static void EnableDarkTitleBar(Form form)
+    {
+        int v = 1;
+        try
+        {
+            DwmSetWindowAttribute(form.Handle, 20, ref v, 4); // DWMWA_USE_IMMERSIVE_DARK_MODE
+            DwmSetWindowAttribute(form.Handle, 19, ref v, 4); // 老版本 19041 之前用 19
+        }
+        catch { }
+    }
+
     // 深色扁平化: 递归处理控件颜色(注意 csc 是 C#5, 不用模式匹配)
     static void StyleDark(Control c)
     {
         Label lb = c as Label;
-        if (lb != null) { lb.ForeColor = Color.FromArgb(215, 215, 215); lb.BackColor = Color.Transparent; }
+        if (lb != null) { lb.ForeColor = Color.FromArgb(215, 215, 215); lb.BackColor = Color.FromArgb(32, 32, 32); }
         CheckBox cb2 = c as CheckBox;
-        if (cb2 != null) { cb2.ForeColor = Color.FromArgb(215, 215, 215); cb2.BackColor = Color.Transparent; }
+        if (cb2 != null) { cb2.ForeColor = Color.FromArgb(215, 215, 215); cb2.BackColor = Color.FromArgb(32, 32, 32); }
         LinkLabel lk = c as LinkLabel;
-        if (lk != null) { lk.LinkColor = Color.FromArgb(120, 180, 255); lk.BackColor = Color.Transparent; }
+        if (lk != null) { lk.LinkColor = Color.FromArgb(120, 180, 255); lk.BackColor = Color.FromArgb(32, 32, 32); }
         GroupBox gb = c as GroupBox;
-        if (gb != null) { gb.ForeColor = Color.FromArgb(160, 160, 160); gb.BackColor = Color.Transparent; }
+        if (gb != null) { gb.ForeColor = Color.FromArgb(160, 160, 160); gb.BackColor = Color.FromArgb(32, 32, 32); }
         Button bt = c as Button;
         if (bt != null)
         {
@@ -147,46 +162,21 @@ static partial class ThemeSwitcher
         catch { return false; }
     }
 
-    // 设置窗口(托盘菜单"设置…"打开); 亚克力深色圆角风格
+    // 设置窗口(托盘菜单"设置…"打开); 原生窗口框架 + 深色标题栏 + 深色扁平控件
     internal static void ShowSettings()
     {
         using (var form = new Form())
         {
             form.Text = "ThemeSwitcher 设置";
-            form.FormBorderStyle = FormBorderStyle.None;
+            form.FormBorderStyle = FormBorderStyle.FixedSingle;
             form.StartPosition = FormStartPosition.CenterScreen;
-            form.ClientSize = new Size(460, 482);
+            form.ClientSize = new Size(440, 486);
             form.MaximizeBox = false; form.MinimizeBox = false;
-            form.ShowInTaskbar = false;
             form.Font = UiFont;
-            form.BackColor = Color.FromArgb(30, 30, 30);
+            form.BackColor = Color.FromArgb(32, 32, 32);
             form.KeyPreview = true;
             form.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) form.Close(); };
-            form.Shown += (s, e) =>
-            {
-                form.Region = WindowFx.RoundedRegion(form.Size, 10);
-                WindowFx.EnableAcrylic(form, 0xE01E1E1E);
-            };
-
-            // 自绘标题栏: 可拖动 + 关闭按钮
-            var header = new Panel { Location = new Point(0, 0), Size = new Size(460, 36), BackColor = Color.Transparent };
-            var title = new Label { Text = "ThemeSwitcher 设置", Location = new Point(14, 9), AutoSize = true, ForeColor = Color.FromArgb(220, 220, 220) };
-            var btnClose = new Button
-            {
-                Text = "\uE711", Location = new Point(424, 4), Size = new Size(32, 28),
-                FlatStyle = FlatStyle.Flat, ForeColor = Color.FromArgb(200, 200, 200),
-                BackColor = Color.Transparent,
-                Font = new Font("Segoe MDL2 Assets", 9F)
-            };
-            btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(70, 60, 60, 60);
-            btnClose.Click += (s, e) => form.Close();
-            header.Controls.AddRange(new Control[] { title, btnClose });
-            header.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) WindowFx.DragWindow(form); };
-            title.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) WindowFx.DragWindow(form); };
-
-            // 内容层: 所有控件相对内容层定位(原坐标 + 顶部 36px 标题栏)
-            var content = new Panel { Location = new Point(1, 37), Size = new Size(458, 444), BackColor = Color.Transparent };
+            form.Shown += (s, e) => EnableDarkTitleBar(form);
 
             // ---- 状态 ----
             var grpState = new GroupBox { Text = "状态", Location = new Point(10, 10), Size = new Size(420, 72) };
@@ -352,10 +342,10 @@ static partial class ThemeSwitcher
                 form.Close();
             };
 
-            form.Controls.AddRange(new Control[] { header, content });
-
-            // 深色扁平化样式: 递归处理所有控件
-            foreach (Control root in content.Controls) StyleDark(root);
+            form.Controls.AddRange(new Control[] {
+                grpState, grpLocation, grpTheme, grpOffset, grpFont,
+                chkAutostart, lnkHomepage, btnRefresh, btnSaveClose });
+            foreach (Control root in form.Controls) StyleDark(root);
 
             // 窗口打开期间实时刷新"下次切换"显示
             var timer = new System.Windows.Forms.Timer { Interval = 1000 };
